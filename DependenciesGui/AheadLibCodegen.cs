@@ -81,7 +81,7 @@ namespace Dependencies
         public CallingConvention CallingConvention { get; private set; }//only c++ export
         public bool IsCppExport { get; set; } = false;
 
-        //public string SubstituteSymbol { get; private set; }
+        //public string SubstituteSymbol { get; set; }
 
         public static int Count = 0;
         public AheadlibFunction()
@@ -127,7 +127,8 @@ namespace Dependencies
         public bool ExportByOrdinal { get; set; }
         public long VirtualAddress { get; set; }
 
-        public string NameInSourceCode { get;private set; }    
+        public string NameInSourceCode { get;private set; } //like:SS_0 、SS_1...
+        
     }
     public enum CodeGenDllMode
     {
@@ -169,7 +170,7 @@ namespace Dependencies
                 function.Name = expfunction.Name;
                 var dx = new DisplayPeExport(expfunction, symbolProvider);
                 function.UndecorateName = dx.Name;
-                //function.NameInSourceCode = function.SubstituteSymbol; //ReplaceRuleLoader.Get_NameInSourceCode_From_Name(function.Name);
+                //function.SubstituteSymbol = function.UndecorateName; //ReplaceRuleLoader.Get_NameInSourceCode_From_Name(function.Name);
                 function.ExportByOrdinal = expfunction.ExportByOrdinal;
                 function.VirtualAddress = expfunction.VirtualAddress;
                 Functions.Add(function);
@@ -210,11 +211,11 @@ namespace Dependencies
                     FileInfo dllfi = new FileInfo(DllTarget.ModuleName);
                     string dllfn = dllfi.Name.Split('.')[0];
 
-                    StreamWriter dllcppsw = new StreamWriter(CodeGenPath + "/" + dllfn + ".c", false, new UTF8Encoding(false));
+                    StreamWriter dllcppsw = new StreamWriter(CodeGenPath + "/" + dllfn + ".hook.c", false, new UTF8Encoding(false));
 
-                    StreamWriter dllhsw = new StreamWriter(CodeGenPath + "/" + dllfn + ".h", false, new UTF8Encoding(false));
-                    dllhsw.WriteLine($"#ifndef {dllfn}_H");
-                    dllhsw.WriteLine($"#define {dllfn}_H");
+                    StreamWriter dllhsw = new StreamWriter(CodeGenPath + "/" + dllfn + ".hook.h", false, new UTF8Encoding(false));
+                    dllhsw.WriteLine($"#ifndef {dllfn}_hook_H");
+                    dllhsw.WriteLine($"#define {dllfn}_hook_H");
                     dllhsw.WriteLine($"//aheadlib plugin for csharp.by snikeguo,email:408260925@qq.com");
                     dllhsw.WriteLine($"//codegen time:{DateTime.Now.ToString("yyyy-MM-dd hh:mm:ss:fff")}");
                     //#ifndef __cplusplus
@@ -222,20 +223,22 @@ namespace Dependencies
                     dllhsw.WriteLine("extern \"C\" {");
                     dllhsw.WriteLine("#endif");
                     dllhsw.WriteLine("#include<Windows.h>");
-                    dllhsw.WriteLine("#include\"MemoryModulePP.h\"");
                     if(DllMode== CodeGenDllMode.MemMode)
                     {
+                        dllhsw.WriteLine("#include\"MemoryModulePP.h\"");
                         dllhsw.WriteLine("#include<Shlwapi.h>");
                     }
 
                     foreach (var func in Functions)
                     {
-                        dllhsw.WriteLine($"extern PVOID pfnAL_{func.NameInSourceCode};//{func.Name}");
+                        dllhsw.WriteLine($"#define FUNCTION_{ReplaceRuleLoader.Get_NameInSourceCode_From_Name(func.Name)} pfnAL_{func.NameInSourceCode} //{func.UndecorateName}");
+                        dllhsw.WriteLine($"extern PVOID pfnAL_{func.NameInSourceCode};//{func.UndecorateName} {ReplaceRuleLoader.Get_NameInSourceCode_From_Name(func.Name)}");
                     }
 
                     foreach (var func in Functions)
                     {
-                        dllhsw.WriteLine($"extern PVOID Old_pfnAL_{func.NameInSourceCode};//{func.Name}");
+                        dllhsw.WriteLine($"#define OLD_FUNCTION_{ReplaceRuleLoader.Get_NameInSourceCode_From_Name(func.Name)} Old_pfnAL_{func.NameInSourceCode} //{func.UndecorateName}");
+                        dllhsw.WriteLine($"extern PVOID Old_pfnAL_{func.NameInSourceCode};//{func.UndecorateName} {ReplaceRuleLoader.Get_NameInSourceCode_From_Name(func.Name)}");
                     }
                     if(DllMode== CodeGenDllMode.FileMode)
                     dllhsw.WriteLine($"extern BOOL WINAPI {dllfn}_Init();");
@@ -250,7 +253,7 @@ namespace Dependencies
                     dllhsw.Flush();
                     dllhsw.Close();
 
-                    dllcppsw.WriteLine($"#include\"{dllfn}.h\"");
+                    dllcppsw.WriteLine($"#include\"{dllfn}.hook.h\"");
                     dllcppsw.WriteLine("#pragma comment( lib, \"Shlwapi.lib\")");
 
                     if (DllTarget.Cpu.ToLower() == "i386")
@@ -420,7 +423,7 @@ namespace Dependencies
                         tracehsw.Close();
 
                         StreamWriter tracecsw = new StreamWriter(CodeGenPath + "/" + dllfn + ".trace.c", false, new UTF8Encoding(false));
-                        tracecsw.WriteLine($"#include\"{dllfn}.h\"");
+                        tracecsw.WriteLine($"#include\"{dllfn}.hook.h\"");
                         tracecsw.WriteLine("#include<stdio.h>");
                         tracecsw.WriteLine("static char LogFileName[256];");
 
